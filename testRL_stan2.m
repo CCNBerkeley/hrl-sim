@@ -1,44 +1,49 @@
-clear all
-dMatlabProcessManager = 'C:\Users\Dan\code\MatlabProcessManager-master';
-dMatlabProcessStanMaster = '/Users/Anne/Dropbox/MesDocuments/WorkGeneral/Softwarelibraries/MatlabStan-master';
-addpath(genpath(dMatlabProcessManager));
-addpath(genpath(dMatlabProcessStanMaster));
+function [] = testRL_stan2()
 
-%% simulate data
+%% Simulate Presentation
+alpha_gain = .2;                                            % Alpha gain
+alpha_loss = .1;                                            % Alpha loss
 
-alphaG = .2;
-alphaL = .1;
-ns = 24;
-betas = sort(7+randn(1,25));
-nt = [repmat([150 300],1,ns/2)];nt = [nt sum(nt)];
-stims = repmat([1 3 5],1,50);
-stims = stims(randperm(length(stims)));
+ns    = 24;                                                 % Number of Subjects
+betas = sort(7 + randn(1,25));                              % ?
+
+nt = [repmat([150 300],1,ns/2)];                            % Number of trials each subject sees
+nt = [nt sum(nt)];                                          % is either 150, 300
+
+stims = repmat([1 3 5],1,50);                               % Stimulus presented, for each 
+stims = stims(randperm(length(stims)));                     % ...
 stims = repmat(stims,2*ns);
-rewP = [.8 .2 .7 .3 .6 .4];
 
-j = 0;
-for si = 1:ns
-    Q = .5*ones(1,6);
-    for t = 1:nt(si)
-        j = j+1;
-        s = stims(t);
-        pair = Q(s+[0 1]);
-        softmax = 1/(1+exp(betas(si)*(pair(1)-pair(2))));% p(1)
-        a = 1+(rand<softmax);
-        r = rand<rewP(s+(a-1));
-        LR = alphaG*r+alphaL*(1-r);
-        Q(s+(a-1)) = (1-LR)*Q(s+(a-1))+LR*r;
-        Choice(j) = s;
-        Correct(j) = a;
-        Reward(j)=r;
-        Subject(j) = si;
-        Init(j) = t==1;
-    end
-    Q
+reward_prob = [.8 .2 .7 .3 .6 .4];                          % Probability of being rewarded 
+smfn = @(x) 1/(1 + exp(x));                                 % Define softmax function
+
+lin_ind = 0;                                                % Linear index for ns-by-nt matrix
+for subj_ind = 1:ns                                         % 
+   Q = 0.5 * ones(1,6);                                     % ?
+
+   for trial = 1:nt(subj_ind)                               % 
+      lin_ind  = lin_ind + 1;                               % Update counter
+      cur_stim = stims(trial);                              % Current stimulus
+      pair     = Q(cur_stim + [0 1]);                       % (?)
+      softmax  = smfn(betas(subj_ind)*(pair(1) - pair(2))); %  
+      success  = 1+(rand < softmax);                        % Correctness as a logical
+      reward   = rand < reward_prob(cur_stim + (success - 1));     % Gets rewarded? (Boolean) 
+      LR       = alpha_gain *     success ...               % Learning Rate (?)
+               + alpha_loss *(1 - success);                 % Calculate the learning rate
+
+      Q(cur_stim + (success - 1)) =      LR  * reward ...
+                                  + (1 - LR) * Q(cur_stim + (success-1));
+
+      choices  (lin_ind) = cur_stim;
+      outcomes (lin_ind) = success;
+      rewards  (lin_ind) = reward;
+      subj_nums(lin_ind) = subj_ind;
+      inits    (lin_ind) = trial == 1;
+   end
+   disp( ['Q: ' sprintf('%5.3f   ',Q)] )
 end
 
-%%
-
+%% Save Stan Input
 % data{
 %   int<lower=1> n_s;                               // number of subjects
 %   int<lower=1> n_t;                               // number of trials for that subject
@@ -46,12 +51,13 @@ end
 %   int<lower=1,upper=2> Correct[n_t,n_s];          // correct (=1, yes-correct)? trial n_t for subject n_s
 %   int<lower=0,upper=1> Reward[n_t,n_s];           // reward (=1, yes)? trial n_t for subject n_s
 % }// end data
-RL_data = struct('n_s',ns,'n_t',nt,'Choice',Choice,'Correct',Correct,...
-    'Reward',Reward,'Subject',Subject,'Init',Init);
+
+RL_data = struct('n_s',ns,'n_t',nt,'Choice',choices,'Correct',outcomes,...
+                 'Reward',rewards,'Subject',subj_nums,'Init',inits);
 %%
 tic
-fitRL = stan('file','opzet_stan_kort_anne_2.stan','data',RL_data,'iter',1000,...
-    'chains',4,'refresh',100,'warmup',500,'thin',10);
+fitRL = stan('file','./opzet_stan_kort_anne_2.stan','data',RL_data,'iter',1000,...
+             'chains',4,'refresh',100,'warmup',500,'thin',10);
 fitRL.verbose = false;
 %fitRL.check();% show progress
 fitRL.block();% block further instructions
@@ -62,9 +68,9 @@ save fitRL2 fitRL
 print(fitRL)
 fitRL.traceplot
 %%
-mu_ag =fitRL.extract('permuted',false).mu_ag;
-mu_al =fitRL.extract('permuted',false).mu_al;
-mu_b =fitRL.extract('permuted',false).mu_b;
+mu_ag = fitRL.extract('permuted',false).mu_ag;
+mu_al = fitRL.extract('permuted',false).mu_al;
+mu_b  = fitRL.extract('permuted',false).mu_b;
 
 figure;
 subplot(3,3,1);hist(mu_ag)
@@ -76,4 +82,7 @@ subplot(3,3,9);hist(mu_b)
 
 subplot(3,3,7)
 hist(mu_ag-mu_al)
-[h p ci stats] = ttest(mu_ag-mu_al);[p stats.tstat]
+[h p ci stats] = ttest(mu_ag-mu_al);
+[p stats.tstat]
+
+end
