@@ -10,71 +10,71 @@ data{
 
 parameters{
   // Parameter means over whole group
-	real mu_b_pr; 				                           //inverse gain parameter
-	real mu_ag_pr;   				                        //alphaG
-	real mu_al_pr;   				                        //alphaL
+	real group_mean_beta; 				                  // Inverse temperature parameter
+	real group_mean_alpha_gain;                        // Sensitivity to gains
+	real group_mean_alpha_loss;                        // Sensitivity to losses
  
   // Parameter standard deviations over whole group
-   real<lower=0> sd_b;   		  	                     //inverse gain parameter
-	real<lower=0> sd_ag;   				                  //alphaG
-	real<lower=0> sd_al;   				                  //alphaL
+   real<lower=0> group_sdev_beta;
+	real<lower=0> group_sdev_alpha_gain;
+	real<lower=0> group_sdev_alpha_loss;
   
   // Parameters for individuals
-   real b_ind_pr [n_s];   			                     //inverse gain parameter
-	real ag_ind_pr[n_s];   				                  //alphaG
-	real al_ind_pr[n_s];   				                  //alphaL
+   real indiv_beta      [n_s];
+	real indiv_alpha_gain[n_s];
+	real indiv_alpha_loss[n_s];
 }
 	
 transformed parameters{
   // Parameter means over whole group
-   real<lower=0,upper=100> mu_b; 		 		         //inverse gain parameter
-   real<lower=0,upper=1  > mu_ag;   				      //alphaG
-   real<lower=0,upper=1  > mu_al;   				      //alphaL
+   real<lower=0,upper=100> group_mean_beta_tr;
+   real<lower=0,upper=1  > group_mean_alpha_gain_tr;
+   real<lower=0,upper=1  > group_mean_alpha_loss_tr;
 
   // Parameter standard deviations over whole group
-   real<lower=0,upper=100> b_ind [n_s];     		      //inverse gain parameter
-   real<lower=0,upper=1  > ag_ind[n_s];   				//alphaG
-   real<lower=0,upper=1  > al_ind[n_s];   	         //alphaL
+   real<lower=0,upper=100> indiv_beta_tr      [n_s]; 
+   real<lower=0,upper=1  > indiv_alpha_gain_tr[n_s];
+   real<lower=0,upper=1  > indiv_alpha_loss_tr[n_s];
 
   // Parameters for individuals (probit)
-   mu_b  <- Phi(mu_b_pr )*100;   	                  //inverse gain parameter
-   mu_ag <- Phi(mu_ag_pr);   				               //alphaG
-   mu_al <- Phi(mu_al_pr);   				               //alphaL
+   group_mean_beta_tr       <- Phi(group_mean_beta )*100;
+   group_mean_alpha_gain_tr <- Phi(group_mean_alpha_gain);
+   group_mean_alpha_loss_tr <- Phi(group_mean_alpha_loss);
 
   // Parameters for individuals (probit)
    for (subj in 1:n_s){
-      b_ind [subj] <- Phi(b_ind_pr [subj])*100;
-      ag_ind[subj] <- Phi(ag_ind_pr[subj]);
-      al_ind[subj] <- Phi(al_ind_pr[subj]);
+      indiv_beta_tr      [subj] <- Phi(indiv_beta      [subj])*100;
+      indiv_alpha_gain_tr[subj] <- Phi(indiv_alpha_gain[subj]);
+      indiv_alpha_loss_tr[subj] <- Phi(indiv_alpha_loss[subj]);
    }
 }
 	
 model{
-   // define vars needed for subject loop
+   // Define vars needed for subject loop
    int       sid;                                     // Subject ID
-   real      prQ0[6];                                 //
-   real      prQ [6];                                 //
-   real      Qchoice[2];                              //
-   real      epsilon;                                 //
+   real      choice_probs_set [6];                    // A/B, C/D, E/F choice probabilities.
+   real      choice_probs_init[6];                    // Initial probabilities.
+   real      choice_probs_cur [2];                    // Choice probabilities for this set, e.g. C/D
+   real      epsilon;                                 // 
    int       success;                                 //
    real      alpha;                                   //
    vector[2] pchoice;                                 //
 
-   // set prior on group level mean parameters
-   mu_b_pr  ~ normal(0,1);   			                  //inverse gain parameter
-   mu_ag_pr ~ normal(0,1);   				               //alphaG
-   mu_al_pr ~ normal(0,1);   				               //alphaL
+   // Set prior on group level mean parameters
+   group_mean_beta       ~ normal(0,1);
+   group_mean_alpha_gain ~ normal(0,1);
+   group_mean_alpha_loss ~ normal(0,1);
 
-   // set prior on group level standard deviations
-   sd_b  ~ uniform(0,1.5);     		                  //inverse gain parameter
-   sd_ag ~ uniform(0,1.5);   				               //alphaG
-   sd_al ~ uniform(0,1.5);   				               //alphaL
+   // Set prior on group level standard deviations
+   group_sdev_beta       ~ uniform(0,1.5);
+   group_sdev_alpha_gain ~ uniform(0,1.5);
+   group_sdev_alpha_loss ~ uniform(0,1.5);
 
-   // set prior for individual level parameters
+   // Set prior for individual level parameters
    for (subj in 1:n_s){
-      b_ind_pr [subj] ~ normal(mu_b_pr ,  sd_b);     	//inverse gain parameter
-      ag_ind_pr[subj] ~ normal(mu_ag_pr, sd_ag);      //alphaG
-      al_ind_pr[subj] ~ normal(mu_al_pr, sd_al);   	//alphaL
+      indiv_beta      [subj] ~ normal(group_mean_beta      , group_sdev_beta      );
+      indiv_alpha_gain[subj] ~ normal(group_mean_alpha_gain, group_sdev_alpha_gain);
+      indiv_alpha_loss[subj] ~ normal(group_mean_alpha_loss, group_sdev_alpha_loss);
    }
 
    // Define epsilon (?) why this value
@@ -85,31 +85,32 @@ model{
 
       // set initial values (i.e. values for trial 1) for the subject
       if (Init[trial] == 1){
-         si <- Subject[trial];                              // Alias the subject id
+         si <- Subject[trial];                                    // Alias the subject id
          for (v in 1:6) {
-            prQ0[v] <- 0.5;                                 // (?)
-            prQ [v] <- 0.5;                                 // (?)
+            choice_probs     [v] <- 0.5;
+            choice_probs_init[v] <- 0.5;
          }
-         pchoice[1] <- 0.5;                                 // Prob. of picking choice 1 on trial 1
-         pchoice[2] <- 0.5;                                 // Prob. of picking choice 2 on trial 1
+         pchoice[1] <- 0.5;                                       // Prob. of picking choice 1 on trial 1
+         pchoice[2] <- 0.5;                                       // Prob. of picking choice 2 on trial 1
       }
 
-      Qchoice[1] <- prQ[Choice[trial]  ];                   // (?)
-      Qchoice[2] <- prQ[Choice[trial]+1];                   // (?)
+      choice_probs_cur[1] <- choice_probs[Choice[trial]  ];
+      choice_probs_cur[2] <- choice_probs[Choice[trial]+1];
 
-      pre_squash <- b_ind[si]*(Qchoice[2] - Qchoice[1]);
-      pchoice[1] <- 1 / ( 1 + exp(pre_squash) );            // Probability of picking choice 1
-      pchoice[2] <- 1 - pchoice[1];                         // Probability of picking choice 2
+      pre_squash <- indiv_beta_tr[si]*(choice_probs_cur[2] - choice_probs_cur[1]);
+      
+      pchoice[1] <- 1 / ( 1 + exp(pre_squash) );                  // Probability of picking choice 1
+      pchoice[2] <- 1 - pchoice[1];                               // Probability of picking choice 2
 
-      pchoice[1] <- epsilon/2+(1-epsilon)*pchoice[1];       // (?)
-      pchoice[2] <- epsilon/2+(1-epsilon)*pchoice[2];       // (?)
+      pchoice[1] <- epsilon/2+(1-epsilon)*pchoice[1];             // (?)
+      pchoice[2] <- epsilon/2+(1-epsilon)*pchoice[2];             // (?)
 
       Correct[trial] ~ categorical(pchoice);
-      success <- Correct[trial] - 1;                        // Success of choice, boolean	
-      index   <- Choice[trial] + success;                   // (?)
+      success <- Correct[trial] - 1;                              // Success of choice, boolean	
+      index   <- Choice[trial] + success;
 
-      // reinforcement
-      alpha      <- Reward[trial] *ag_ind[si] + (1-Reward[trial]) *al_ind[si];
-      prQ[index] <- prQ[index] + alpha *(Reward[trial] - prQ[index]);
+      // Reinforcement
+      alpha <- Reward[trial] *indiv_alpha_gain_tr[si] + (1-Reward[trial]) *indiv_alpha_loss_tr[si];
+      choice_probs[index] <- choice_probs[index] + alpha *(Reward[trial] - choice_probs[index]);
    }
 }

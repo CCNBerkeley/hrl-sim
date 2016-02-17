@@ -1,5 +1,5 @@
-function [] = test_STAN_flat_RL_recovery()
-% [] = test_STAN_flat_RL_recovery simulates human experimental data for a stacked one-step 
+function [] = test_stan_flat_rl_recovery()
+% [] = test_stan_flat_rl_recovery simulates human experimental data for a stacked one-step 
 % selection paradigm, i.e. presentation of AB, CD, EF pairs for which each choice (e.g. A in AB)
 % has a fixed probability of resulting in a reward, and then uses STAN to recover the parameters
 % governing the simulated agents' choices.
@@ -90,7 +90,7 @@ RL_data = struct('n_s',ns,'n_t',trial_counts,'Choice',choice,'Correct',outcomes,
 
 %% Perform the STAN fitting
 tic
-fitRL = stan('file','./opzet_stan_kort_anne_2.stan','data',RL_data,'iter',1000,...
+fitRL = stan('file','./flat_rl_recovery.stan','data',RL_data,'iter',1000,...
              'chains',4,'refresh',100,'warmup',500,'thin',10);
 fitRL.verbose = false;
 %fitRL.check();% show progress
