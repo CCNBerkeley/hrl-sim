@@ -9,27 +9,26 @@ function [] = test_STAN_flat_RL_recovery()
 % serially in the variable "reward_prob".
 %
 % Notes:
-%    1. Still uncertain about the beta/softmax math
-%    2. Indexing is all crazy
-%    3. This whole thing can probably be vectorized
+%    1. Indexing is all crazy
+%    2. This whole thing can probably be vectorized
 
 alpha_gain = .2;                                            % Importance of gains to agents
 alpha_loss = .1;                                            % Importance of losses to agents
 
 ns    = 24;                                                 % Number of Subjects
-betas = sort(7 + randn(1,25));                              % (?) See notes
-
+betas = sort(7 + randn(1,25));                              % Inverse temp. param ie sensitivity 
+                                                            % ... to Reward Prediction Error
 trial_counts = repmat([150 300],1,ns/2);                    % Number of trials each subject
-ntrials      = sum(trial_counts);                           % sees, either 150 or 300
+ntrials      = sum(trial_counts);                           % ... sees, either 150 or 300
 trial_counts = [trial_counts ntrials];                      % Save total for whole-group analy.
 
 stims = repmat([1 3 5],1,50);                               % Stimulus presented for each
-stims = stims(randperm(length(stims)));                     % trial (randomized)
+stims = stims(randperm(length(stims)));                     % ... trial (randomized)
 stims = repmat(stims,2*ns);                                 % Resultant size 2*ns-by-300*ns
 
 reward_prob = [.8 .2 .7 .3 .6 .4];                          % Reward prob.s for A/B, C/D, E/F
-smfn = @(x) 1./(1 + exp(x));                                % Define softmax squashing function
-
+smfn = @(x) 1./(1 + exp(x));                                % SoftMax FuNction for squashing
+                                                            % ... RPE response
 % Pre-initialize large matrices
 outcomes = NaN(1,ntrials);                                  % Outcomes for simulated choices
 rewards  = NaN(1,ntrials);                                  % Whether each outcome is rewarded
@@ -51,9 +50,9 @@ for subj_ind = 1:ns                                         % of vars by trial, 
       stim_inds = cur_stim + [0, 1];                        % Index of choice reward probs.
       
       pair     = choice_Ps(stim_inds);                      % Prob. of eg picking A in AB choice
-      pre_sqsh = betas(subj_ind)*(pair(1) - pair(2));       % Pre-squashed 
+      pre_sqsh = betas(subj_ind)*(pair(1) - pair(2));       % Pre-squashed RPE response
       
-      softmax  = smfn(pre_sqsh);                            % (?) See notes
+      softmax  = smfn(pre_sqsh);                            % Squashed RPE response
       success  = 1+(rand < softmax);                        % Correctness as 1 or 2. 1=Corr.
       
       rwrd_ind = cur_stim + success - 1;                    % Eg. stim 3 correct => 3, inc. => 4
