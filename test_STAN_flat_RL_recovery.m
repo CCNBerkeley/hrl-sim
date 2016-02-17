@@ -34,6 +34,7 @@ outcomes = NaN(1,ntrials);                                  % Outcomes for simul
 rewards  = NaN(1,ntrials);                                  % Whether each outcome is rewarded
 subj_ids = NaN(1,ntrials);                                  % The id. number of each subject
 inits    = NaN(1,ntrials);                                  % Boolean, initialize learning?
+choice   = NaN(1,ntrials);                                  % Vector of stimulus presentations
 
 % Simulate Experiment
 lin_ind = 0;                                                % Linear index for vectors as lists
@@ -66,6 +67,7 @@ for subj_ind = 1:ns                                         % of vars by trial, 
       rewards (lin_ind) = reward;                           % Record feedback given to agent
       subj_ids(lin_ind) = subj_ind;                         % Record the agent's ID number
       inits   (lin_ind) = trial == 1;                       % Record if init. must happen
+      choice  (lin_ind) = cur_stim;                         % Record the current stimulus
    end
    
    % Display the simulated agent's learned probabilities of making various selections. 
@@ -83,7 +85,7 @@ end
 %    int<lower=0,upper=1> Reward[n_t,n_s];   // reward  (=0 no reward  , =1 yes rewarded)
 % }// end data
 
-RL_data = struct('n_s',ns,'n_t',trial_counts,'Choice',stims,'Correct',outcomes,...
+RL_data = struct('n_s',ns,'n_t',trial_counts,'Choice',choice,'Correct',outcomes,...
                  'Reward',rewards,'Subject',subj_ids,'Init',inits);
 
 %% Perform the STAN fitting
@@ -95,29 +97,7 @@ fitRL.verbose = false;
 fitRL.block();% block further instructions
 
 toc
-save fitRL2 fitRL
+save('fitRL.mat',fitRL)
 
-%% Show User Fit Outcomes
-print(fitRL)
-fitRL.traceplot
-
-%% Extract Parameter Fits and Plot Stuff
-
-mu_ag = fitRL.extract('permuted',false).mu_ag;
-mu_al = fitRL.extract('permuted',false).mu_al;
-mu_b  = fitRL.extract('permuted',false).mu_b;
-
-figure;
-subplot(3,3,1);hist(mu_ag)
-subplot(3,3,2);scatter(mu_ag,mu_al);lsline;[rho pval] = corr(mu_ag,mu_al);[rho pval]
-subplot(3,3,3);scatter(mu_ag,mu_b);lsline;[rho pval] = corr(mu_ag,mu_b);[rho pval]
-subplot(3,3,5);hist(mu_al)
-subplot(3,3,6);scatter(mu_al,mu_b);lsline;[rho pval] = corr(mu_al,mu_b);[rho pval]
-subplot(3,3,9);hist(mu_b)
-
-subplot(3,3,7)
-hist(mu_ag-mu_al)
-[h p ci stats] = ttest(mu_ag-mu_al);
-[p stats.tstat]
-
+plot_stan_flat_rl_recovery(fitRL)
 end
