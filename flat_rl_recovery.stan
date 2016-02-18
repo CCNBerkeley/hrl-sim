@@ -37,7 +37,7 @@ transformed parameters{
    real<lower=0,upper=1  > indiv_alpha_loss_tr[n_s];
 
   // Parameters for individuals (probit)
-   group_mean_beta_tr       <- Phi(group_mean_beta )*100;
+   group_mean_beta_tr       <- Phi(group_mean_beta      )*100;
    group_mean_alpha_gain_tr <- Phi(group_mean_alpha_gain);
    group_mean_alpha_loss_tr <- Phi(group_mean_alpha_loss);
 
@@ -59,6 +59,8 @@ model{
    int       success;                                 //
    real      alpha;                                   //
    vector[2] pchoice;                                 //
+   real      pre_squash;                              //
+   int       index;                                   //
 
    // Set prior on group level mean parameters
    group_mean_beta       ~ normal(0,1);
@@ -77,40 +79,40 @@ model{
       indiv_alpha_loss[subj] ~ normal(group_mean_alpha_loss, group_sdev_alpha_loss);
    }
 
-   // Define epsilon (?) why this value
-   epsilon <- 0.00001;
+   // Set parameter defining the task's underlying probability drift
+   epsilon <- 0.00001; 
 
   // now start looping over subjects
    for (trial in 1:n_t[n_s+1]){
 
       // set initial values (i.e. values for trial 1) for the subject
       if (Init[trial] == 1){
-         si <- Subject[trial];                                    // Alias the subject id
+         sid <- Subject[trial];                                   // Alias the subject id
          for (v in 1:6) {
-            choice_probs     [v] <- 0.5;
+            choice_probs_set [v] <- 0.5;
             choice_probs_init[v] <- 0.5;
          }
          pchoice[1] <- 0.5;                                       // Prob. of picking choice 1 on trial 1
          pchoice[2] <- 0.5;                                       // Prob. of picking choice 2 on trial 1
       }
 
-      choice_probs_cur[1] <- choice_probs[Choice[trial]  ];
-      choice_probs_cur[2] <- choice_probs[Choice[trial]+1];
+      choice_probs_cur[1] <- choice_probs_set[Choice[trial]  ];
+      choice_probs_cur[2] <- choice_probs_set[Choice[trial]+1];
 
-      pre_squash <- indiv_beta_tr[si]*(choice_probs_cur[2] - choice_probs_cur[1]);
+      pre_squash <- indiv_beta_tr[sid]*(choice_probs_cur[2] - choice_probs_cur[1]);
       
       pchoice[1] <- 1 / ( 1 + exp(pre_squash) );                  // Probability of picking choice 1
       pchoice[2] <- 1 - pchoice[1];                               // Probability of picking choice 2
 
-      pchoice[1] <- epsilon/2+(1-epsilon)*pchoice[1];             // (?)
-      pchoice[2] <- epsilon/2+(1-epsilon)*pchoice[2];             // (?)
+      pchoice[1] <- epsilon/2+(1-epsilon)*pchoice[1];             //
+      pchoice[2] <- epsilon/2+(1-epsilon)*pchoice[2];             //
 
       Correct[trial] ~ categorical(pchoice);
       success <- Correct[trial] - 1;                              // Success of choice, boolean	
       index   <- Choice[trial] + success;
 
       // Reinforcement
-      alpha <- Reward[trial] *indiv_alpha_gain_tr[si] + (1-Reward[trial]) *indiv_alpha_loss_tr[si];
-      choice_probs[index] <- choice_probs[index] + alpha *(Reward[trial] - choice_probs[index]);
+      alpha <- Reward[trial] *indiv_alpha_gain_tr[sid] + (1-Reward[trial]) *indiv_alpha_loss_tr[sid];
+      choice_probs_set[index] <- choice_probs_set[index] + alpha *(Reward[trial] - choice_probs_set[index]);
    }
 }
