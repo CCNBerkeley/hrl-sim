@@ -52,9 +52,9 @@ transformed parameters{
 model{
    // Define vars needed for subject loop
    int       sid;                                     // Subject ID
-   real      choice_probs_set [6];                    // A/B, C/D, E/F choice probabilities.
-   real      choice_probs_init[6];                    // Initial probabilities.
-   real      choice_probs_cur [2];                    // Choice probabilities for this set, e.g. C/D
+   real      action_vals_set [6];                     // A/B, C/D, E/F choice probabilities.
+   real      action_vals_init[6];                     // Initial probabilities.
+   real      action_vals_cur [2];                     // Choice probabilities for this set, e.g. C/D
    real      epsilon;                                 // 
    int       success;                                 //
    real      alpha;                                   //
@@ -89,17 +89,17 @@ model{
       if (Init[trial] == 1){
          sid <- Subject[trial];                                   // Alias the subject id
          for (v in 1:6) {
-            choice_probs_set [v] <- 0.5;
-            choice_probs_init[v] <- 0.5;
+            action_vals_set [v] <- 0.5;
+            action_vals_init[v] <- 0.5;
          }
          pchoice[1] <- 0.5;                                       // Prob. of picking choice 1 on trial 1
          pchoice[2] <- 0.5;                                       // Prob. of picking choice 2 on trial 1
       }
 
-      choice_probs_cur[1] <- choice_probs_set[Choice[trial]  ];
-      choice_probs_cur[2] <- choice_probs_set[Choice[trial]+1];
+      action_vals_cur[1] <- action_vals_set[Choice[trial]  ];
+      action_vals_cur[2] <- action_vals_set[Choice[trial]+1];
 
-      pre_squash <- indiv_beta_tr[sid]*(choice_probs_cur[2] - choice_probs_cur[1]);
+      pre_squash <- indiv_beta_tr[sid]*(action_vals_cur[2] - action_vals_cur[1]);
       
       pchoice[1] <- 1 / ( 1 + exp(pre_squash) );                  // Probability of picking choice 1
       pchoice[2] <- 1 - pchoice[1];                               // Probability of picking choice 2
@@ -113,6 +113,6 @@ model{
 
       // Reinforcement
       alpha <- Reward[trial] *indiv_alpha_gain_tr[sid] + (1-Reward[trial]) *indiv_alpha_loss_tr[sid];
-      choice_probs_set[index] <- choice_probs_set[index] + alpha *(Reward[trial] - choice_probs_set[index]);
+      action_vals_set[index] <- action_vals_set[index] + alpha *(Reward[trial] - action_vals_set[index]);
    }
 }

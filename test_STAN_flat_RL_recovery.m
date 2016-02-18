@@ -40,7 +40,7 @@ choice   = NaN(1,ntrials);                                  % Vector of stimulus
 lin_ind = 0;                                                % Linear index for vectors as lists
 for subj_ind = 1:ns                                         % of vars by trial, e.g. "choices"
    % Initialize prob.s for current agent's choices
-   choice_Ps = 0.5 * ones(3,2);                             % Choice probabilities
+   action_vals = 0.5 * ones(3,2);                             % Choice probabilities
 
    % Simulate this subject's experimental data
    subj_ntrials = trial_counts(subj_ind);                   % Extract subject's epoch length
@@ -48,20 +48,21 @@ for subj_ind = 1:ns                                         % of vars by trial, 
       lin_ind  = lin_ind + 1;                               % Increment loop counter
       
       cur_stim = stims(trial);                              % Current stimulus
-      cur_prob = choice_Ps(cur_stim,:);                     % Prob. of eg picking A in AB choice
-      pre_sqsh = betas(subj_ind)*(cur_prob(1)-cur_prob(2)); % Pre-squashed RPE response
+      cur_vals = action_vals(cur_stim,:);                   % Extract the learned action values
+      cur_diff = cur_vals(1) - cur_vals(2);                 %
       
-      rpe      = smfn(pre_sqsh);                            % Squashed RPE response
-      success  = rand > rpe;                                % Correctness as 1 or 2. 1=Corr.
-      % success = 1 + rand < rpe  =? 1 correct, 2 erro
+      threshold = smfn(betas(subj_ind)*cur_diff);           % Squashed RPE response
+      success   = rand > threshold;                         % Correctness as boolean
        
-      rwrd_ind = success + 1;                               % 1 or 2
+      rwrd_ind = success + 1;                               % Col. index into reward prob. matrix
       reward   = rand < reward_prob(cur_stim,rwrd_ind);     % Boolean indication of reward 
-      LR       = alpha_gain*reward + alpha_loss*(~reward);  % Calculate the learning rate
+      alpha    = alpha_gain*reward + alpha_loss*(~reward);  % Calculate the learning rate
 
-      choice_Ps(cur_stim,rwrd_ind) =      LR *reward  ...            % Update choice probabilities
-                          + (1 - LR)*choice_Ps(cur_stim,rwrd_ind);% based on outcome of this choice.
+      new_action_vals =      alpha *reward  ...             % Update action values based on the
+                      + (1 - alpha)*cur_vals(rwrd_ind);     % outcome of this choice.
 
+      action_vals(cur_stim,rwrd_ind) = new_action_vals;     % 
+      
       outcomes(lin_ind) = success;                          % Record simulated agent success
       rewards (lin_ind) = reward;                           % Record feedback given to agent
       subj_ids(lin_ind) = subj_ind;                         % Record the agent's ID number
@@ -70,7 +71,7 @@ for subj_ind = 1:ns                                         % of vars by trial, 
    end
    
    % Display the simulated agent's learned probabilities of making various selections. 
-   disp( ['Choice Probs: ' sprintf('%5.3f   ',reshape(choice_Ps',1,6))] )
+   disp( ['Choice Probs: ' sprintf('%5.3f   ',reshape(action_vals',1,6))] )
 end
 
 %% Save Stan Input
