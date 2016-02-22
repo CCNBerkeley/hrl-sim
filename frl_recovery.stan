@@ -10,42 +10,42 @@ data{
 
 parameters{
   // Parameter means over whole group
-	real group_mean_beta; 				                  // Inverse temperature parameter
-	real group_mean_alpha_gain;                        // Sensitivity to gains
-	real group_mean_alpha_loss;                        // Sensitivity to losses
+	real group_mean_beta_pr; 				                  // Inverse temperature parameter
+	real group_mean_alpha_gain_pr;                        // Sensitivity to gains
+	real group_mean_alpha_loss_pr;                        // Sensitivity to losses
  
   // Parameter standard deviations over whole group
-   real<lower=0> group_sdev_beta;
-	real<lower=0> group_sdev_alpha_gain;
-	real<lower=0> group_sdev_alpha_loss;
+   real<lower=0> group_sdev_beta_pr;
+	real<lower=0> group_sdev_alpha_gain_pr;
+	real<lower=0> group_sdev_alpha_loss_pr;
   
   // Parameters for individuals
-   real indiv_beta      [n_s];
-	real indiv_alpha_gain[n_s];
-	real indiv_alpha_loss[n_s];
+   real indiv_beta_pr      [n_s];
+	real indiv_alpha_gain_pr[n_s];
+	real indiv_alpha_loss_pr[n_s];
 }
 	
 transformed parameters{
   // Parameter means over whole group
-   real<lower=0,upper=100> group_mean_beta_tr;
-   real<lower=0,upper=1  > group_mean_alpha_gain_tr;
-   real<lower=0,upper=1  > group_mean_alpha_loss_tr;
+   real<lower=0,upper=100> group_mean_beta;
+   real<lower=0,upper=1  > group_mean_alpha_gain;
+   real<lower=0,upper=1  > group_mean_alpha_loss;
 
   // Parameter standard deviations over whole group
-   real<lower=0,upper=100> indiv_beta_tr      [n_s]; 
-   real<lower=0,upper=1  > indiv_alpha_gain_tr[n_s];
-   real<lower=0,upper=1  > indiv_alpha_loss_tr[n_s];
+   real<lower=0,upper=100> indiv_beta      [n_s]; 
+   real<lower=0,upper=1  > indiv_alpha_gain[n_s];
+   real<lower=0,upper=1  > indiv_alpha_loss[n_s];
 
   // Parameters for individuals (probit)
-   group_mean_beta_tr       <- Phi(group_mean_beta      )*100;
-   group_mean_alpha_gain_tr <- Phi(group_mean_alpha_gain);
-   group_mean_alpha_loss_tr <- Phi(group_mean_alpha_loss);
+   group_mean_beta       <- Phi(group_mean_beta_pr      )*100;
+   group_mean_alpha_gain <- Phi(group_mean_alpha_gain_pr);
+   group_mean_alpha_loss <- Phi(group_mean_alpha_loss_pr);
 
   // Parameters for individuals (probit)
    for (subj in 1:n_s){
-      indiv_beta_tr      [subj] <- Phi(indiv_beta      [subj])*100;
-      indiv_alpha_gain_tr[subj] <- Phi(indiv_alpha_gain[subj]);
-      indiv_alpha_loss_tr[subj] <- Phi(indiv_alpha_loss[subj]);
+      indiv_beta      [subj] <- Phi(indiv_beta_pr      [subj])*100;
+      indiv_alpha_gain[subj] <- Phi(indiv_alpha_gain_pr[subj]);
+      indiv_alpha_loss[subj] <- Phi(indiv_alpha_loss_pr[subj]);
    }
 }
 	
@@ -65,20 +65,20 @@ model{
    real      cur_diff;                                //
 
    // Set prior on group level mean parameters
-   group_mean_beta       ~ normal(0,1);
-   group_mean_alpha_gain ~ normal(0,1);
-   group_mean_alpha_loss ~ normal(0,1);
+   group_mean_beta_pr       ~ normal(0,1);
+   group_mean_alpha_gain_pr ~ normal(0,1);
+   group_mean_alpha_loss_pr ~ normal(0,1);
 
    // Set prior on group level standard deviations
-   group_sdev_beta       ~ uniform(0,1.5);
-   group_sdev_alpha_gain ~ uniform(0,1.5);
-   group_sdev_alpha_loss ~ uniform(0,1.5);
+   group_sdev_beta_pr       ~ uniform(0,1.5);
+   group_sdev_alpha_gain_pr ~ uniform(0,1.5);
+   group_sdev_alpha_loss_pr ~ uniform(0,1.5);
 
    // Set prior for individual level parameters
    for (subj in 1:n_s){
-      indiv_beta      [subj] ~ normal(group_mean_beta      , group_sdev_beta      );
-      indiv_alpha_gain[subj] ~ normal(group_mean_alpha_gain, group_sdev_alpha_gain);
-      indiv_alpha_loss[subj] ~ normal(group_mean_alpha_loss, group_sdev_alpha_loss);
+      indiv_beta_pr      [subj] ~ normal(group_mean_beta_pr      , group_sdev_beta_pr      );
+      indiv_alpha_gain_pr[subj] ~ normal(group_mean_alpha_gain_pr, group_sdev_alpha_gain_pr);
+      indiv_alpha_loss_pr[subj] ~ normal(group_mean_alpha_loss_pr, group_sdev_alpha_loss_pr);
    }
 
    // What is this parameter for?
@@ -106,7 +106,7 @@ model{
       action_vals_cur[2] <- action_vals_set[cur_stim,2];
 
       cur_diff   <- action_vals_cur[1] - action_vals_cur[2];
-      threshold  <- indiv_beta_tr[sid]*(cur_diff);
+      threshold  <- indiv_beta[sid]*(cur_diff);
       
       pchoice[1] <- 1 / ( 1 + exp(threshold) );                   // Probability of picking choice 1
       pchoice[2] <- 1 - pchoice[1];                               // Probability of picking choice 2
@@ -119,7 +119,7 @@ model{
       index   <- success;
 
       // Reinforcement
-      alpha <- reward[trial] *indiv_alpha_gain_tr[sid] + (1-reward[trial]) *indiv_alpha_loss_tr[sid];
+      alpha <- reward[trial] *indiv_alpha_gain[sid] + (1-reward[trial]) *indiv_alpha_loss[sid];
       action_vals_set[cur_stim,index] <- action_vals_set[cur_stim,index] + alpha *(reward[trial] - action_vals_set[cur_stim,index]);
    }
 }

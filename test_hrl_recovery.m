@@ -1,4 +1,4 @@
-function [] = test_stan_flat_rl_recovery()
+function [] = test_hrl_recovery()
 % [] = test_stan_flat_rl_recovery simulates human experimental data for a stacked one-step 
 % selection paradigm, i.e. presentation of AB, CD, EF pairs for which each choice (e.g. A in AB)
 % has a fixed probability of resulting in a reward, and then uses STAN to recover the parameters
@@ -7,6 +7,7 @@ function [] = test_stan_flat_rl_recovery()
 %% Simulate Human Data for Experimental Paradigm 
 % Stimuli (i.e. AB, CD, EF pairs) are coded 1,2, or 3.
 
+mbwgt      = .5;                                            % Fraction model-based learning
 alpha_gain = .2;                                            % Importance of gains to agents
 alpha_loss = .1;                                            % Importance of losses to agents
 
@@ -21,9 +22,12 @@ stims = repmat([1 2 3],1,50);                               % Stimulus presented
 stims = stims(randperm(length(stims)));                     % ... trial (randomized)
 stims = repmat(stims,2*ns);                                 % Resultant size 2*ns-by-300*ns
 
-reward_prob = [0.8, 0.2;                                    % Reward prob.s. Row 1 is for AB
-               0.7, 0.3;                                    % probs for CD
-               0.6, 0.4 ];                                  % probs for EF
+trans_prob  = [0.8, 0.2;                                    % Transition probabilities, for 
+               0.7, 0.3;                                    % moving from AB, CD, and EF to 
+               0.6, 0.4 ];                                  % XY (Good) and ZW (Less Good)
+
+reward_prob = [0.8, 0.2;                                    % Reward probs for second stages,
+               0.6, 0.4];                                   % row 1 is XY, row 2 is ZY.
 
 smfn = @(x) 1./(1 + exp(x));                                % SoftMax FuNction for squashing ...
                                                             % RPE response, which 
@@ -39,34 +43,75 @@ lin_ind = 0;                                                % Linear index for v
 for subj_ind = 1:ns                                         % of vars by trial, e.g. "choices"
 
    % Simulate this subject's experimental data
-   action_vals  = 0.5 * ones(3,2);                          % Initialize action values
-   subj_ntrials = trial_counts(subj_ind);                   % Extract subject's epoch length
+   mbavals{1} = 0.5 * ones(size(trans_prob));               % Step 1 model-based action values
+   mbavals{2} = 0.5 * ones(size(reward_prob));              % Step 2 ...
 
+   mfavals{1} = 0.5 * ones(size(trans_prob));               % Model-free action values
+   mfavals{2} = 0.5 * ones(size(reward_prob));              % ...
+   
+   havals{1} = mbwgt*mbavals{1} + (1-mbwgt)*mfavals{1};     % Mixture (hybrid) model values
+   havals{2} = mbwgt*mbavals{2} + (1-mbwgt)*mfavals{2};     % ...
+
+   subj_ntrials   = trial_counts(subj_ind);                 % Extract subject's epoch length
    for trial = 1:subj_ntrials                               % Loop over this subjects trials.
+      
+      %---- Stage 1 stimulus and choice. ----%
       lin_ind  = lin_ind + 1;                               % Increment loop counter
+      cur_stim = stims(trial);                              % Current stimulus, a volatile var.
       
-      cur_stim = stims(trial);                              % Current stimulus
-      cur_vals = action_vals(cur_stim,:);                   % Extract the learned action values
-      cur_diff = cur_vals(1) - cur_vals(2);                 %
+      cur_mbavals{1} = mbavals{1}(cur_stim,:);              % How much is an MBA worth...?
+      cur_mfavals{1} = mfavals{1}(cur_stim,:);              % Compared to a masters of fine arts?
+      cur_havals {1} =    mbawgt *cur_mbavals{1} ...        %
+                     + (1-mbawgt)*cur_mfavals{1};           %
       
-      threshold = smfn(betas(subj_ind)*cur_diff);           % Squashed RPE response
+      cur_diff  = cur_havals(1) - cur_havals(2);            %
+      threshold = smfn(betas(subj_ind)*cur_diff);           %
       success   = rand > threshold;                         % Successfully chose option 1?
-       
+
+      % Record stage 1 info as vecs for STAN
+      stanin_correct (lin_ind,1) = success + 1;             %
+      stanin_stimuli (lin_ind,1) = cur_stim;                %
+      
+      %---- Stage 2 stimulus and choice ----%      
+      choice   = 2 - success;                               % Chose opt. 1 if smart, otherwise 2.
+      new_stim = 1 + (rand > trans_prob(cur_stim,choice));  % Do we move to XY (1) or ZW (2)?
+            
+      cur_mbavals{2} = mbavals{2}(new_stim,:);              %
+      cur_mfavals{2} = mfavals{2}(new_stim,:);              %
+      cur_havals {2} =    mbawgt *cur_mbavals{2} ...        %
+                     + (1-mbawgt)*cur_mfavals{2};           %
+      
+      cur_diff  = cur_havals(1) - cur_havals(2);            %
+      threshold = smfn(betas(subj_ind)*cur_diff);           %
+      success   = rand > threshold;                         % Successfully chose option 1?
+
       rwrd_ind = success + 1;                               % Column index in reward prob. matrix
       reward   = rand < reward_prob(cur_stim,rwrd_ind);     % Boolean indication of reward 
-      alpha    = alpha_gain*reward + alpha_loss*(~reward);  % Calculate the learning rate
 
-      new_action_vals =      alpha *reward  ...             % Update action values based on the
-                      + (1 - alpha)*cur_vals(rwrd_ind);     % outcome of this choice.
-
-      action_vals(cur_stim,rwrd_ind) = new_action_vals;     % 
+      % Record stage 2 info as vecs for STAN
+      stanin_correct (lin_ind,2) = success + 1;             %
+      stanin_stimuli (lin_ind,2) = cur_stim;                %
       
-      % Record calculations as vectors, these go to STAN.
-      stanin_correct (lin_ind) = success + 1;               %
+      %---- Action-value Updates ----%
+      alpha1 = alpha1_gain*reward + alpha1_loss*(~reward);  % Calculate the stage 1 learning rate
+      alpha2 = alpha2_gain*reward + alpha2_loss*(~reward);  % Calculate the stage 2 learning rate
+
+      delta1 = mfavals{2} - mfavals{1};
+      delta2 = reward     - mfavals{2};
+
+      mfavals{2} = mfavals{2} + alpha2*delta2;
+      mfavals{1} = mfavals{1} + alpha1*delta1 ...
+                              + lambda*alpha2*delta2;
+      
+      mbavals{2} = mbavals{2} + alpha2*delta2;
+      mbavals{1} = mbavals{1}; % FILL tHIS IN 
+
+      havals = mbawgt*mbavals + (1-mbawgt)*mfavals;         %
+ 
+      % Record general trial info as vecs for STAN
       stanin_rewards (lin_ind) = reward;                    %
       stanin_subj_ids(lin_ind) = subj_ind;                  %
       stanin_inits   (lin_ind) = trial == 1;                %
-      stanin_stimuli (lin_ind) = cur_stim;                  %
    end
    
    % Display the simulated agent's learned probabilities of making various selections. 
@@ -111,5 +156,5 @@ toc
 
 save('./output/fitRL.mat','fitRL')
 
-plot_stan_flat_rl_recovery(fitRL,0)
+plot_frl_recovery(fitRL,0)
 end
