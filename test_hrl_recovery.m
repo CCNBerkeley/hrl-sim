@@ -85,8 +85,12 @@ for subj_ind = 1:ns                                         % of vars by trial, 
       
       delta_spe = 1 - trans_learn(stim1,act1,stim2);        % Transition pred. update parameter.
       trans_learn(stim1,act1,stim2) = ...                   % Update the learned transition rate
-      trans_learn(stim1,act1,stim2) + fwrd_lr *delta_spe;   % matrix.
-      
+         trans_learn(stim1,act1,stim2) + fwrd_lr *delta_spe;% matrix.
+   
+      others = 1 + ~(stim2 - 1);
+      trans_learn(stim1,act1,others) = ...
+         trans_learn(stim1,act1,others)*(1 - fwrd_lr);
+   
       pred = pred_state(stim1,act1,trans_learn);            % Predicted state, i.e. S(s1t,a1t)
 
       cur_mbavals{2} = mbavals{2}(stim2,:);                 %
