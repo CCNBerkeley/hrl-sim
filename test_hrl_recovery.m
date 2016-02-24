@@ -7,9 +7,13 @@ function [] = test_hrl_recovery()
 %% Simulate Human Data for Experimental Paradigm 
 % Stimuli (i.e. AB, CD, EF pairs) are coded 1,2, or 3.
 
-mbwgt      = .5;                                            % Fraction model-based learning
-alpha_gain = .2;                                            % Importance of gains to agents
-alpha_loss = .1;                                            % Importance of losses to agents
+mbwgt       = 0.5;                                          % Fraction model-based learning
+alpha1_gain = 0.2;                                          % Importance of gains to agents
+alpha2_gain = 0.2;                                          % Importance of gains to agents
+alpha1_loss = 0.1;                                          % Importance of losses to agents
+alpha2_loss = 0.1;                                          % Importance of losses to agents
+fwrd_lr     = 0.2;                                          % Forward learning rate
+lambda      = 0.2;                                          %
 
 ns    = 2;                                                  % Number of Subjects
 betas = sort(7 + randn(1,ns+1));                            % Inverse temp. param ie sensitivity 
@@ -25,6 +29,9 @@ stims = repmat(stims,2*ns);                                 % Resultant size 2*n
 trans_prob  = [0.8, 0.2;                                    % Transition probabilities, for 
                0.7, 0.3;                                    % moving from AB, CD, and EF to 
                0.6, 0.4 ];                                  % XY (Good) and ZW (Less Good)
+
+trans_learn = repmat(0.5,3,2,2);                            % Transition probs learned, as matrix
+                                                            % T(prev_state, action, cur_state)
 
 reward_prob = [0.8, 0.2;                                    % Reward probs for second stages,
                0.6, 0.4];                                   % row 1 is XY, row 2 is ZY.
@@ -57,65 +64,68 @@ for subj_ind = 1:ns                                         % of vars by trial, 
       
       %---- Stage 1 stimulus and choice. ----%
       lin_ind  = lin_ind + 1;                               % Increment loop counter
-      cur_stim = stims(trial);                              % Current stimulus, a volatile var.
+      stim1    = stims(trial);                              % Current stimulus, a volatile var.
       
-      cur_mbavals{1} = mbavals{1}(cur_stim,:);              % How much is an MBA worth...?
-      cur_mfavals{1} = mfavals{1}(cur_stim,:);              % Compared to a masters of fine arts?
-      cur_havals {1} =    mbawgt *cur_mbavals{1} ...        %
-                     + (1-mbawgt)*cur_mfavals{1};           %
+      cur_mbavals{1} = mbavals{1}(stim1,:);                 % How much is an MBA worth...?
+      cur_mfavals{1} = mfavals{1}(stim1,:);                 % Compared to a masters of fine arts?
+      cur_havals {1} =    mbwgt *cur_mbavals{1} ...         %
+                     + (1-mbwgt)*cur_mfavals{1};            %
       
-      cur_diff  = cur_havals(1) - cur_havals(2);            %
+      cur_diff  = cur_havals{1}(1) - cur_havals{1}(2);      %
       threshold = smfn(betas(subj_ind)*cur_diff);           %
-      success   = rand > threshold;                         % Successfully chose option 1?
+      success1  = rand > threshold;                         % Successfully chose option 1?
+      act1      = 2 - success1;                             % Chose opt. 1 if smart, otherwise 2.
 
       % Record stage 1 info as vecs for STAN
-      stanin_correct (lin_ind,1) = success + 1;             %
-      stanin_stimuli (lin_ind,1) = cur_stim;                %
+      stanin_correct (lin_ind,1) = success1 + 1;            %
+      stanin_stimuli (lin_ind,1) = stim1;                   %
       
       %---- Stage 2 stimulus and choice ----%      
-      choice   = 2 - success;                               % Chose opt. 1 if smart, otherwise 2.
-      new_stim = 1 + (rand > trans_prob(cur_stim,choice));  % Do we move to XY (1) or ZW (2)?
-            
-      cur_mbavals{2} = mbavals{2}(new_stim,:);              %
-      cur_mfavals{2} = mfavals{2}(new_stim,:);              %
-      cur_havals {2} =    mbawgt *cur_mbavals{2} ...        %
-                     + (1-mbawgt)*cur_mfavals{2};           %
+      stim2 = 1 + (rand > trans_prob(stim1,act1));          % Do we move to XY (1) or ZW (2)?
       
-      cur_diff  = cur_havals(1) - cur_havals(2);            %
-      threshold = smfn(betas(subj_ind)*cur_diff);           %
-      success   = rand > threshold;                         % Successfully chose option 1?
+      delta_spe = 1 - trans_learn(stim1,act1,stim2);        % Transition pred. update parameter.
+      trans_learn(stim1,act1,stim2) = ...                   % Update the learned transition rate
+      trans_learn(stim1,act1,stim2) + fwrd_lr *delta_spe;   % matrix.
+      
+      pred = pred_state(stim1,act1,trans_learn);            % Predicted state, i.e. S(s1t,a1t)
 
-      rwrd_ind = success + 1;                               % Column index in reward prob. matrix
-      reward   = rand < reward_prob(cur_stim,rwrd_ind);     % Boolean indication of reward 
+      cur_mbavals{2} = mbavals{2}(stim2,:);                 %
+      cur_mfavals{2} = mfavals{2}(stim2,:);                 %
+      cur_havals {2} =    mbwgt *cur_mbavals{2} ...         %
+                     + (1-mbwgt)*cur_mfavals{2};            %
+      
+      cur_diff  = cur_havals{2}(1) - cur_havals{2}(2);      %
+      threshold = smfn(betas(subj_ind)*cur_diff);           %
+      success2  = rand > threshold;                         % Successfully chose option 1?
+      act2      = 2 - success2;                             % Chose opt. 1 if smart, otherwise 2.
+      reward    = rand < reward_prob(stim2,act2);           % Boolean indication of reward 
 
       % Record stage 2 info as vecs for STAN
-      stanin_correct (lin_ind,2) = success + 1;             %
-      stanin_stimuli (lin_ind,2) = cur_stim;                %
+      stanin_correct (lin_ind,2) = success2 + 1;            %
+      stanin_stimuli (lin_ind,2) = stim2;                   %
       
       %---- Action-value Updates ----%
       alpha1 = alpha1_gain*reward + alpha1_loss*(~reward);  % Calculate the stage 1 learning rate
       alpha2 = alpha2_gain*reward + alpha2_loss*(~reward);  % Calculate the stage 2 learning rate
 
-      delta1 = mfavals{2} - mfavals{1};
-      delta2 = reward     - mfavals{2};
+      delta1 = mfavals{2}(stim2,act2) - mfavals{1}(stim1,act1);
+      delta2 = reward                 - mfavals{2}(stim2,act2);
 
-      mfavals{2} = mfavals{2} + alpha2*delta2;
-      mfavals{1} = mfavals{1} + alpha1*delta1 ...
-                              + lambda*alpha2*delta2;
+      mfavals{2}(stim2,act2) = mfavals{2}(stim2,act2) + alpha2*delta2;
+      mfavals{1}(stim1,act1) = mfavals{1}(stim1,act1) + alpha1*delta1 ...
+                                                      + lambda*alpha2*delta2;
       
-      mbavals{2} = mbavals{2} + alpha2*delta2;
-      mbavals{1} = mbavals{1}; % FILL tHIS IN 
+      mbavals{2}(stim2,act2) = mbavals{2}(stim2,act2) + alpha2*delta2;
+      mbavals{1}(stim1,act1) = max(mbavals{2}(pred,:));
 
-      havals = mbawgt*mbavals + (1-mbawgt)*mfavals;         %
+      havals{1} = mbwgt*mbavals{1} + (1-mbwgt)*mfavals{1};  %
+      havals{2} = mbwgt*mbavals{2} + (1-mbwgt)*mfavals{2};  %
  
       % Record general trial info as vecs for STAN
       stanin_rewards (lin_ind) = reward;                    %
       stanin_subj_ids(lin_ind) = subj_ind;                  %
       stanin_inits   (lin_ind) = trial == 1;                %
    end
-   
-   % Display the simulated agent's learned probabilities of making various selections. 
-   disp( ['Action Vals: ' sprintf('%5.3f   ',reshape(action_vals',1,6))] )
 end
 
 %% Save Stan Input
@@ -157,4 +167,19 @@ toc
 save('./output/fitRL.mat','fitRL')
 
 plot_frl_recovery(fitRL,0)
+end
+
+function [prediction] = pred_state(cur_state,action,transitions)
+   % Returns 1 or 2 for getting to XY vs ZW respectively.
+   
+   % Get the greatest expected transition value
+   most_likely = max(transitions(cur_state,action,:));
+   
+   % 
+   prediction = find(transitions(cur_state,action,:) == most_likely);
+   if numel(prediction) > 1
+      prediction = prediction((rand > 0.5)+1);
+   end
+   % Insert handling for equal transition probabilities?
+   
 end
